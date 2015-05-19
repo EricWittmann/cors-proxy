@@ -69,6 +69,10 @@ public class ProxyServlet extends HttpServlet {
         InputStream remoteIS = null;
         OutputStream responseOS = null;
         try {
+            String auth = req.getHeader("Authorization");
+            if (auth != null) {
+                remoteConn.setRequestProperty("Authorization", auth);
+            }
             remoteConn.connect();
             Map<String, List<String>> headerFields = remoteConn.getHeaderFields();
             for (String headerName : headerFields.keySet()) {
