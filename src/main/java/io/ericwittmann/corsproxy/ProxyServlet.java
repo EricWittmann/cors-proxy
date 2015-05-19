@@ -52,10 +52,10 @@ public class ProxyServlet extends HttpServlet {
     }
 
     /**
-     * @see javax.servlet.http.HttpServlet#doGet(javax.servlet.http.HttpServletRequest, javax.servlet.http.HttpServletResponse)
+     * @see javax.servlet.http.HttpServlet#service(javax.servlet.http.HttpServletRequest, javax.servlet.http.HttpServletResponse)
      */
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException,
+    protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException,
             IOException {
         String url = "https://issues.jboss.org" + req.getPathInfo();
         if (req.getQueryString() != null) {
@@ -63,17 +63,40 @@ public class ProxyServlet extends HttpServlet {
         }
 
         System.out.println("Proxying to: " + url);
+        boolean isWrite = req.getMethod().equalsIgnoreCase("post") || req.getMethod().equalsIgnoreCase("put");
 
         URL remoteUrl = new URL(url);
         HttpURLConnection remoteConn = (HttpURLConnection) remoteUrl.openConnection();
+        if (isWrite) {
+            remoteConn.setDoOutput(true);
+        }
+
+        String auth = req.getHeader("Authorization");
+        if (auth != null) {
+            remoteConn.setRequestProperty("Authorization", auth);
+        }
+
+        if (isWrite) {
+            InputStream requestIS = null;
+            OutputStream remoteOS = null;
+            try {
+                requestIS = req.getInputStream();
+                remoteOS = remoteConn.getOutputStream();
+                IOUtils.copy(requestIS, remoteOS);
+                remoteOS.flush();
+            } catch (Exception e) {
+                e.printStackTrace();
+                resp.sendError(500, e.getMessage());
+                return;
+            } finally {
+                IOUtils.closeQuietly(requestIS);
+                IOUtils.closeQuietly(remoteOS);
+            }
+        }
+
         InputStream remoteIS = null;
         OutputStream responseOS = null;
         try {
-            String auth = req.getHeader("Authorization");
-            if (auth != null) {
-                remoteConn.setRequestProperty("Authorization", auth);
-            }
-            remoteConn.connect();
             Map<String, List<String>> headerFields = remoteConn.getHeaderFields();
             for (String headerName : headerFields.keySet()) {
                 if (headerName == null) {
@@ -91,6 +114,7 @@ public class ProxyServlet extends HttpServlet {
             IOUtils.copy(remoteIS, responseOS);
             resp.flushBuffer();
         } catch (Exception e) {
+            e.printStackTrace();
             resp.sendError(500, e.getMessage());
         } finally {
             IOUtils.closeQuietly(responseOS);
